@@ -33,6 +33,7 @@ usage() {
   msg.sh join FROM               # 新会话/新项目对齐包：摘要 + 未读 + 最近提交 + 项目表
   msg.sh leave FROM [说明]       # 退出/归档：登记 left 并在群里留一句
   msg.sh members                 # 谁还在群里（active / left + 最后活动时间）
+  msg.sh forget 名字             # 删掉这条成员记录（它发过的消息不动）
 
 点对点：
   msg.sh send FROM TO 标题 < 正文
@@ -262,6 +263,17 @@ cmd_decide() {
     echo "结论已记录：$subj"
 }
 
+# 删掉 members/<名字> 这条名单记录（不碰它发过的消息）
+cmd_forget() {
+    [ $# -ge 1 ] || { usage >&2; exit 2; }
+    name=$(clean "$1")
+    if [ -f "$ROOT/members/$name" ]; then
+        rm -f "$ROOT/members/$name"; echo "已删除成员记录：$name（消息未动）"
+    else
+        echo "（没有这条成员记录：$name）"
+    fi
+}
+
 cmd_join() {
     [ $# -ge 1 ] || { usage >&2; exit 2; }
     me=$(clean "$1"); reg_member "$me" active "-"
@@ -377,6 +389,7 @@ case "$cmd" in
     join) cmd_join "$@" ;;
     leave) cmd_leave "$@" ;;
     members) cmd_members ;;
+    forget) cmd_forget "$@" ;;
     send) cmd_send "$@" ;;
     list) cmd_list "$@" ;;
     read) cmd_read "$@" ;;

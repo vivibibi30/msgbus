@@ -39,6 +39,7 @@ export MSGBUS_DIR=~/.msgbus
 | `join FROM` | 首次接手：摘要 + 未读 + 最近提交 + 项目表 |
 | `leave FROM [说明]` | 标记 left 并在群里留一条公告 |
 | `members` | 谁还在：名字 / active·left / 最后活动 / 说明 |
+| `forget 名字` | 删掉这条成员记录（它发过的消息不动） |
 | `send/list/read/all` | 点对点消息（同样有游标与归档） |
 
 ## 讨论协议（约定）
