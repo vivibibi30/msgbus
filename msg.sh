@@ -27,6 +27,9 @@ usage() {
   msg.sh new FROM                # 只看自己没看过的（不含自己发的），看完记已读
   msg.sh history [--all]         # 群历史；--all 连已压缩归档的也列
   msg.sh digest FROM 标题 < 摘要  # 把现有群消息压成一条摘要并归档原文
+  msg.sh intro FROM 职责 [不碰什么]  # 自我介绍（结构化：我是谁/管什么/不碰什么）
+  msg.sh agree FROM 消息id [一句话]  # 对某条消息表态
+  msg.sh decide FROM 标题 < 结论     # 把讨论收口，记一条结论
   msg.sh join FROM               # 新会话/新项目对齐包：摘要 + 未读 + 最近提交 + 项目表
   msg.sh leave FROM [说明]       # 退出/归档：登记 left 并在群里留一句
   msg.sh members                 # 谁还在群里（active / left + 最后活动时间）
@@ -81,7 +84,7 @@ read_body() {
 }
 
 write_msg() {
-    from=$1; to=$2; subj=$3; body=$4; scope=$5; refs=${6:-}; covers=${7:-}; upto=${8:-}
+    from=$1; to=$2; subj=$3; body=$4; scope=$5; refs=${6:-}; covers=${7:-}; upto=${8:-}; extra=${9:-}
     mkdir -p "$SPOOL" "$SEEK" || exit 1
     [ -n "$to" ] && mkdir -p "$ARCH/$to"
     id=$(now_id "$from"); f="$SPOOL/$id.msg"
@@ -92,6 +95,7 @@ write_msg() {
         printf 'refs: %s\n' "${refs:--}"
         [ -n "$covers" ] && printf 'covers: %s\n' "$covers"
         [ -n "$upto" ] && printf 'upto: %s\n' "$upto"
+        [ -n "$extra" ] && printf '%s\n' "$extra"
         printf 'time: %s\n' "$(date +%Y-%m-%dT%H:%M:%S%z)"
         [ -n "$subj" ] && printf 'subject: %s\n' "$subj"
         printf '\n%s\n' "$body"
@@ -200,6 +204,34 @@ cmd_digest() {
     rm -rf "$ROOT/.digest.lock"
     trap - EXIT INT TERM
     echo "已压缩 $cnt 条 → $f（原文移入 $ARCH/group/）"
+}
+
+# 自我介绍：别人 new 时一眼知道你是谁、管什么、不碰什么
+cmd_intro() {
+    [ $# -ge 2 ] || { usage >&2; exit 2; }
+    from=$(clean "$1"); duty=$2; bound=${3:--}
+    body=$(printf '我是 %s。\n职责：%s\n不碰：%s' "$from" "$duty" "$bound")
+    reg_member "$from" active "intro"
+    write_msg "$from" "" "自我介绍" "$body" group "-" "" "" "kind: intro" >/dev/null
+    echo "$from 的自我介绍已发到群里"
+}
+
+# 表态：同一条议题上表态，re 指向被回应的消息 id
+cmd_agree() {
+    [ $# -ge 2 ] || { usage >&2; exit 2; }
+    from=$(clean "$1"); re=$2; shift 2; note=${1:-同意}
+    body="同意 $re${note:+：$note}"
+    write_msg "$from" "" "表态" "$body" group "-" "" "" "kind: agree
+re: $re" >/dev/null
+    echo "$from 已对 $re 表态"
+}
+
+# 结论：把讨论收口，记一条 decision
+cmd_decide() {
+    [ $# -ge 2 ] || { usage >&2; exit 2; }
+    from=$(clean "$1"); subj=$2; body=$(read_body)
+    write_msg "$from" "" "$subj" "$body" group "-" "" "" "kind: decision" >/dev/null
+    echo "结论已记录：$subj"
 }
 
 cmd_join() {
@@ -311,6 +343,9 @@ case "$cmd" in
     new) cmd_new "$@" ;;
     history) cmd_history "$@" ;;
     digest) cmd_digest "$@" ;;
+    intro) cmd_intro "$@" ;;
+    agree) cmd_agree "$@" ;;
+    decide) cmd_decide "$@" ;;
     join) cmd_join "$@" ;;
     leave) cmd_leave "$@" ;;
     members) cmd_members ;;
