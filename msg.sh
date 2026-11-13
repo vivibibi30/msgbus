@@ -134,37 +134,65 @@ showable() {
 }
 
 print_msg() {
-    f=$1
-    printf '## %s  %s' \
-        "$(sed -n 's/^time: //p' "$f" | head -1 | cut -c1-19)" \
-        "$(sed -n 's/^from: //p' "$f" | head -1)"
-    if grep -qx 'scope: digest' "$f" 2>/dev/null; then
-        printf '  [摘要 %s 条]' "$(sed -n 's/^covers: //p' "$f" | head -1)"
-    fi
-    subj=$(sed -n 's/^subject: //p' "$f" | head -1)
-    [ -n "$subj" ] && printf '  %s' "$subj"
-    echo
-    refs=$(sed -n 's/^refs: //p' "$f" | head -1)
-    [ -n "$refs" ] && [ "$refs" != "-" ] && printf '   refs: %s\n' "$refs"
-    sed -n '/^$/,$p' "$f" | sed '1d' | cut -c1-"$MSG_CHARS"
-    echo
+    # 一条消息只 fork 一次 awk（原来要 6 次 sed/cut），大量消息时差别很明显
+    awk -v max="$MSG_CHARS" '
+        FNR==1 { from=""; t=""; refs=""; subj=""; covers=""; scope="group"; body=0; buf="" }
+        !body {
+            if ($0 == "") { body=1; next }
+            if ($0 ~ /^from: /) from=substr($0,7)
+            else if ($0 ~ /^time: /) t=substr($0,7)
+            else if ($0 ~ /^refs: /) refs=substr($0,7)
+            else if ($0 ~ /^subject: /) subj=substr($0,10)
+            else if ($0 ~ /^covers: /) covers=substr($0,9)
+            else if ($0 ~ /^scope: /) scope=substr($0,8)
+            next
+        }
+        { buf = buf $0 "\n" }
+        END {
+            head = "## " substr(t,1,19) "  " from
+            if (scope == "digest") head = head "  [摘要 " covers " 条]"
+            if (subj != "") head = head "  " subj
+            print head
+            if (refs != "" && refs != "-") print "   refs: " refs
+            if (buf != "") printf "%s", substr(buf,1,max)
+            print ""
+        }' "$1"
 }
 
 cmd_new() {
     [ $# -ge 1 ] || { usage >&2; exit 2; }
     me=$(clean "$1"); mkdir -p "$SEEK"; sf="$SEEK/$me"; touch "$sf"
-    n=0; unseen=0; more=0
-    for f in "$SPOOL"/*.msg; do
-        [ -e "$f" ] || continue
-        id=$(basename "$f" .msg)
-        showable "$f" "$me" || continue
-        grep -qxF "$id" "$sf" && continue
-        unseen=$((unseen + 1))
-        [ "$n" -ge "$MSG_MAX" ] && { more=1; continue; }
-        print_msg "$f"; printf '%s\n' "$id" >> "$sf"; n=$((n + 1))
+    last=$(tail -1 "$sf" 2>/dev/null || true)
+
+    # 一次 awk 扫完：挑出「文件名 > 游标」且 scope=group、不是自己发的
+    cand=$(cd "$SPOOL" 2>/dev/null && awk -v c="$last" -v me="$me" '
+        FNR==1 { f=FILENAME; sub(/\.msg$/, "", f); from=""; scope="group"; next }
+        FNR<=8 {
+            if ($0 ~ /^from: /) { from=substr($0,7) }
+            else if ($0 ~ /^scope: /) { scope=substr($0,8) }
+            else if ($0 == "") {
+                if (f > c && scope == "group" && from != me) print f
+                nextfile
+            }
+        }' *.msg 2>/dev/null)
+
+    # 一次 grep -vxF 去掉已读，避免每个文件 fork 一次
+    if [ -n "$cand" ] && [ -s "$sf" ]; then
+        cand=$(printf '%s\n' $cand | grep -vxF -f "$sf" || true)
+    fi
+
+    n=0; todo=""
+    for id in $cand; do
+        todo="$todo $id"
+        if [ "$n" -lt "$MSG_MAX" ]; then
+            print_msg "$SPOOL/$id.msg"; n=$((n + 1))
+        fi
     done
-    [ "$n" = 0 ] && echo "（没有新消息）"
-    [ "$more" = 1 ] && echo "… 还有 $((unseen - n)) 条未显示（MSG_MAX=$MSG_MAX），再跑一次 new"
+    [ -n "$todo" ] && printf '%s\n' $todo >> "$sf"
+
+    total=$(printf '%s\n' $cand | grep -c . || true)
+    [ "$total" = 0 ] && echo "（没有新消息）"
+    [ "$total" -gt "$MSG_MAX" ] && echo "… 还有 $((total - MSG_MAX)) 条未显示（MSG_MAX=$MSG_MAX），再跑一次 new"
     return 0
 }
 
