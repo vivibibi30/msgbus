@@ -57,6 +57,22 @@ reg_member() { # NAME STATUS [NOTE]
         "$2" "$(date +%Y-%m-%dT%H:%M:%S%z)" "${3:--}" > "$MEM/$(clean "$1")"
 }
 
+# digest 互斥：并发压缩会让同一批消息产生两条摘要（实测过），用目录锁串行化
+acquire_digest_lock() {
+    lock=$ROOT/.digest.lock
+    i=0
+    while [ "$i" -lt 25 ]; do
+        if mkdir "$lock" 2>/dev/null; then printf '%s\n' "$$" > "$lock/pid"; return 0; fi
+        if [ -f "$lock/pid" ]; then
+            pid=$(cat "$lock/pid" 2>/dev/null || true)
+            if [ -n "$pid" ] && ! kill -0 "$pid" 2>/dev/null; then rm -rf "$lock"; continue; fi
+        fi
+        sleep 0.2 2>/dev/null || sleep 1
+        i=$((i + 1))
+    done
+    return 1
+}
+
 read_body() {
     body=$(cat)
     body=$(printf '%s\n' "$body" | sed '/./,$!d')
@@ -168,10 +184,12 @@ cmd_history() {
 cmd_digest() {
     [ $# -ge 2 ] || { usage >&2; exit 2; }
     from=$(clean "$1"); subj=$2; body=$(read_body)
+    acquire_digest_lock || { echo "另一个会话正在 digest，稍后再试（锁：$ROOT/.digest.lock）" >&2; exit 1; }
+    trap 'rm -rf "$ROOT/.digest.lock"' EXIT INT TERM
     ids=""; cnt=0; upto=""
     for f in "$SPOOL"/*.msg; do
         [ -e "$f" ] || continue
-        grep -Eqx 'scope: (group|digest)' "$f" 2>/dev/null || continue
+        grep -qx 'scope: group' "$f" 2>/dev/null || continue
         ids="$ids $(basename "$f" .msg)"; cnt=$((cnt + 1)); upto=$(basename "$f" .msg)
     done
     [ "$cnt" -gt 0 ] || { echo "群里没有需要压缩的群消息" >&2; exit 1; }
@@ -179,6 +197,8 @@ cmd_digest() {
     f=$(write_msg "$from" "" "$subj" "$body" digest "-" "$cnt" "$upto")
     for id in $ids; do mv "$SPOOL/$id.msg" "$ARCH/group/$id.msg" 2>/dev/null || true; done
     # 不写别人的游标：摘要对没读过原文的会话（含新会话）仍然算新消息
+    rm -rf "$ROOT/.digest.lock"
+    trap - EXIT INT TERM
     echo "已压缩 $cnt 条 → $f（原文移入 $ARCH/group/）"
 }
 
