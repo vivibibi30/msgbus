@@ -188,18 +188,19 @@ cmd_new() {
         cand=$(printf '%s\n' $cand | grep -vxF -f "$sf" || true)
     fi
 
-    n=0; todo=""
+    n=0; shown=""; rest=0
     for id in $cand; do
-        todo="$todo $id"
         if [ "$n" -lt "$MSG_MAX" ]; then
-            print_msg "$SPOOL/$id.msg"; n=$((n + 1))
+            print_msg "$SPOOL/$id.msg"
+            shown="$shown $id"; n=$((n + 1))
+        else
+            rest=$((rest + 1))     # 超出上限的不标记已读，下次还能看到
         fi
     done
-    [ -n "$todo" ] && printf '%s\n' $todo >> "$sf"
+    [ -n "$shown" ] && printf '%s\n' $shown >> "$sf"
 
-    total=$(printf '%s\n' $cand | grep -c . || true)
-    [ "$total" = 0 ] && echo "（没有新消息）"
-    [ "$total" -gt "$MSG_MAX" ] && echo "… 还有 $((total - MSG_MAX)) 条未显示（MSG_MAX=$MSG_MAX），再跑一次 new"
+    [ "$n" = 0 ] && echo "（没有新消息）"
+    [ "$rest" -gt 0 ] && echo "… 还有 $rest 条未显示（MSG_MAX=$MSG_MAX），再跑一次 new"
     return 0
 }
 
