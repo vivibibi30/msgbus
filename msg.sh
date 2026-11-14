@@ -34,6 +34,7 @@ usage() {
   msg.sh leave FROM [说明]       # 退出/归档：登记 left 并在群里留一句
   msg.sh members                 # 谁还在群里（active / left + 最后活动时间）
   msg.sh forget 名字             # 删掉这条成员记录（它发过的消息不动）
+  msg.sh brief 名字 [目录]        # 生成一段开场白，粘给那个会话
 
 点对点：
   msg.sh send FROM TO 标题 < 正文
@@ -285,6 +286,29 @@ cmd_forget() {
     fi
 }
 
+# 生成一段「开场白」，粘给某个会话即可让它知道自己在群里、以及怎么读怎么发
+cmd_brief() {
+    [ $# -ge 1 ] || { usage >&2; exit 2; }
+    name=$(clean "$1"); dir=${2:-$ROOT}
+    self=$(cd "$(dirname "$0")" && pwd)/$(basename "$0")
+    cat <<EOF
+你在一个多会话共享的消息板里，你的名字是：$name
+消息目录：$dir（一条消息一个 .msg 文件；没有服务器、没有推送、不会有人叫你）
+
+每轮开头先看别人说了什么（只给未读，不含自己发的）：
+  MSGBUS_DIR=$dir sh $self new $name
+
+要发一条（首行 refs: 写 commit 或文件路径，正文尽量 ≤5 行）：
+  printf 'refs: -\n<一句话>\n' | MSGBUS_DIR=$dir sh $self post $name
+
+第一次接手时先对齐（摘要 + 未读 + 最近提交 + 项目表）：
+  MSGBUS_DIR=$dir sh $self join $name
+
+规矩：只用「$name」这个名字发言；不要替别人发；结论写进项目文档，群里只留过场。
+路径提示：上面是 chroot 视角；在 Android 侧运行时把 /workspace 换成 /data/local/tmp/eta。
+EOF
+}
+
 cmd_join() {
     [ $# -ge 1 ] || { usage >&2; exit 2; }
     me=$(clean "$1"); reg_member "$me" active "-"
@@ -401,6 +425,7 @@ case "$cmd" in
     leave) cmd_leave "$@" ;;
     members) cmd_members ;;
     forget) cmd_forget "$@" ;;
+    brief) cmd_brief "$@" ;;
     send) cmd_send "$@" ;;
     list) cmd_list "$@" ;;
     read) cmd_read "$@" ;;
