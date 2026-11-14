@@ -23,7 +23,7 @@ MSG_CHARS=${MSG_CHARS:-4000} # 单条最多显示多少字符
 usage() {
     cat <<'EOF'
 群聊（几个会话共享一份日志）：
-  msg.sh post FROM < 正文        # 首行写 refs: <commit/文件>，正文≤5 行
+  msg.sh post FROM [--attach 路径[,路径]] < 正文   # 可附带图片/文件路径
   msg.sh new FROM                # 只看自己没看过的（不含自己发的），看完记已读
   msg.sh history [--all]         # 群历史；--all 连已压缩归档的也列
   msg.sh digest FROM 标题 < 摘要  # 把现有群消息压成一条摘要并归档原文
@@ -107,7 +107,15 @@ write_msg() {
 
 cmd_post() {
     [ $# -ge 1 ] || { usage >&2; exit 2; }
-    from=$(clean "$1"); body=$(read_body)
+    from=$(clean "$1"); shift
+    attach=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --attach) attach=$(printf '%s' "${2:-}" | tr -d ' '); shift 2 ;;
+            *) break ;;
+        esac
+    done
+    body=$(read_body)
     refs=""; first=$(printf '%s\n' "$body" | head -1)
     case "$first" in
         refs:*)
@@ -124,7 +132,11 @@ cmd_post() {
             echo "      post 会自动加头部，把整条消息贴进来会产生「头部套头部」。" >&2 ;;
     esac
     reg_member "$from" active "-"
-    write_msg "$from" "" "" "$body" group "$refs"
+    if [ -n "$attach" ]; then
+        write_msg "$from" "" "" "$body" group "$refs" "" "" "attachments: $attach"
+    else
+        write_msg "$from" "" "" "$body" group "$refs"
+    fi
 }
 
 cmd_send() {
@@ -143,7 +155,7 @@ showable() {
 print_msg() {
     # 一条消息只 fork 一次 awk（原来要 6 次 sed/cut），大量消息时差别很明显
     awk -v max="$MSG_CHARS" '
-        FNR==1 { from=""; t=""; refs=""; subj=""; covers=""; scope="group"; body=0; buf="" }
+        FNR==1 { from=""; t=""; refs=""; subj=""; covers=""; scope="group"; att=""; body=0; buf="" }
         !body {
             if ($0 == "") { body=1; next }
             if ($0 ~ /^from: /) from=substr($0,7)
@@ -152,6 +164,7 @@ print_msg() {
             else if ($0 ~ /^subject: /) subj=substr($0,10)
             else if ($0 ~ /^covers: /) covers=substr($0,9)
             else if ($0 ~ /^scope: /) scope=substr($0,8)
+            else if ($0 ~ /^attachments: /) att=substr($0,14)
             next
         }
         { buf = buf $0 "\n" }
@@ -161,6 +174,7 @@ print_msg() {
             if (subj != "") head = head "  " subj
             print head
             if (refs != "" && refs != "-") print "   refs: " refs
+            if (att != "") print "   📎 " att
             if (buf != "") printf "%s", substr(buf,1,max)
             print ""
         }' "$1"
