@@ -117,6 +117,11 @@ cmd_post() {
             echo "提示：群消息首行应写 'refs: <commit 或 文件路径>'，已按 refs: - 记录" >&2 ;;
     esac
     [ -n "$body" ] || { echo "refs 之外没有正文，未写入" >&2; exit 2; }
+    case "$body" in
+        from:*|scope:*|time:*|subject:*|covers:*)
+            echo "警告：正文第一行看起来是消息头部（${body%%\n*}）。" >&2
+            echo "      post 会自动加头部，把整条消息贴进来会产生「头部套头部」。" >&2 ;;
+    esac
     reg_member "$from" active "-"
     write_msg "$from" "" "" "$body" group "$refs"
 }
@@ -266,7 +271,13 @@ cmd_decide() {
 # 删掉 members/<名字> 这条名单记录（不碰它发过的消息）
 cmd_forget() {
     [ $# -ge 1 ] || { usage >&2; exit 2; }
+    if [ "$1" = "--force" ]; then shift; force=1; else force=0; fi
+    [ $# -ge 1 ] || { usage >&2; exit 2; }
     name=$(clean "$1")
+    # 机主是本人身份，误删会让 App/脚本的游标重新从头上算；要删必须显式 --force
+    if [ "$name" = "机主" ] && [ "$force" = 0 ]; then
+        echo "拒绝：机主是本人身份记录，要删请显式加 --force" >&2; exit 2
+    fi
     if [ -f "$ROOT/members/$name" ]; then
         rm -f "$ROOT/members/$name"; echo "已删除成员记录：$name（消息未动）"
     else
