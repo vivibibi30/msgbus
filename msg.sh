@@ -187,7 +187,7 @@ cmd_new() {
 
     # 一次 awk 扫完：挑出「文件名 > 游标」且 scope=group、不是自己发的
     cand=$(cd "$SPOOL" 2>/dev/null && awk -v c="$last" -v me="$me" '
-        FNR==1 { f=FILENAME; sub(/\.msg$/, "", f); from=""; scope="group"; next }
+        FNR==1 { f=FILENAME; sub(/\.msg$/, "", f); from=""; scope="group" }
         FNR<=8 {
             if ($0 ~ /^from: /) { from=substr($0,7) }
             else if ($0 ~ /^scope: /) { scope=substr($0,8) }
