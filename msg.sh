@@ -13,6 +13,9 @@ elif [ -n "$W" ] && [ -f "$W/INDEX.md" ]; then
 else
     ROOT=${HOME:-.}/.msgbus
 fi
+# 统一时间基准：两侧环境默认时区不同（chroot=UTC、Android=本地），
+# 不统一会让同一瞬间写出两个日期，按文件名排序就错序了
+TZ=UTC0; export TZ
 SPOOL=$ROOT/spool
 SEEK=$ROOT/seen
 ARCH=$ROOT/archive
