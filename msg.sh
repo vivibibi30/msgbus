@@ -361,7 +361,11 @@ cmd_join() {
     if [ -n "$newest" ]; then mkdir -p "$SEEK"; printf '%s\n' "$newest" >> "$SEEK/$me"; fi
 
     echo "== 工作区最近提交"
-    git -C "$W" log --oneline -8 2>/dev/null || echo "（$W 不是 git 仓库）"
+    if command -v git >/dev/null 2>&1; then
+        git -C "$W" log --oneline -8 2>/dev/null || echo "（$W 不是 git 仓库）"
+    else
+        echo "（当前环境没有 git：Android 侧读不到提交记录，请在 chroot 里跑）"
+    fi
     if [ -f "$W/INDEX.md" ]; then
         echo "== 项目表（INDEX 第 4 节）"
         sed -n '/^## 4\. 项目/,/^## 5\./p' "$W/INDEX.md" | sed '$d'
