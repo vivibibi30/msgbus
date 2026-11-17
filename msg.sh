@@ -24,7 +24,7 @@ usage() {
     cat <<'EOF'
 群聊（几个会话共享一份日志）：
   msg.sh post FROM [--attach 路径[,路径]] < 正文   # 可附带图片/文件路径
-  msg.sh new FROM                # 只看自己没看过的（不含自己发的），看完记已读
+  msg.sh new FROM [--all]        # 只看自己没看过的；首次默认从当前最新开始（--all 追历史）
   msg.sh history [--all]         # 群历史；--all 连已压缩归档的也列
   msg.sh digest FROM 标题 < 摘要  # 把现有群消息压成一条摘要并归档原文
   msg.sh intro FROM 职责 [不碰什么]  # 自我介绍（结构化：我是谁/管什么/不碰什么）
@@ -182,8 +182,23 @@ print_msg() {
 
 cmd_new() {
     [ $# -ge 1 ] || { usage >&2; exit 2; }
-    me=$(clean "$1"); mkdir -p "$SEEK"; sf="$SEEK/$me"; touch "$sf"
+    me=$(clean "$1"); shift || true
+    show_all=0
+    [ "${1:-}" = "--all" ] && show_all=1
+    mkdir -p "$SEEK"; sf="$SEEK/$me"; touch "$sf"
     last=$(tail -1 "$sf" 2>/dev/null || true)
+
+    # 第一次用这个名字：默认不追历史，直接把游标设到当前最新，避免新会话对入群前的
+    # 旧消息逐条反应（要看历史用 new --all 或 join）
+    if [ -z "$last" ] && [ "$show_all" = 0 ]; then
+        newest=$(cd "$SPOOL" 2>/dev/null && ls -1 *.msg 2>/dev/null | tail -1 | sed 's/\.msg$//')
+        if [ -n "$newest" ]; then
+            printf '%s\n' "$newest" >> "$sf"
+            echo "（首次使用「$me」：已把游标设到当前最新，之后只看新消息）"
+            echo "（要看入群前的历史：msg.sh new $me --all，或 msg.sh join $me）"
+            return 0
+        fi
+    fi
 
     # 一次 awk 扫完：挑出「文件名 > 游标」且 scope=group、不是自己发的
     cand=$(cd "$SPOOL" 2>/dev/null && awk -v c="$last" -v me="$me" '
@@ -341,6 +356,10 @@ cmd_join() {
     fi
     echo "== 我的未读"
     cmd_new "$me"
+    # 对齐完把游标推到最新：之后 new 只给新消息，不会把历史再倒一遍
+    newest=$(cd "$SPOOL" 2>/dev/null && ls -1 *.msg 2>/dev/null | tail -1 | sed 's/\.msg$//')
+    if [ -n "$newest" ]; then mkdir -p "$SEEK"; printf '%s\n' "$newest" >> "$SEEK/$me"; fi
+
     echo "== 工作区最近提交"
     git -C "$W" log --oneline -8 2>/dev/null || echo "（$W 不是 git 仓库）"
     if [ -f "$W/INDEX.md" ]; then
