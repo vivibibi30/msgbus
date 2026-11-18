@@ -16,6 +16,9 @@ fi
 # 统一时间基准：两侧环境默认时区不同（chroot=UTC、Android=本地），
 # 不统一会让同一瞬间写出两个日期，按文件名排序就错序了
 TZ=UTC0; export TZ
+# 排序也固定：glob/sort 在 C locale 下才是字节序，换成别的 locale 顺序会变，diff 与缓存都不稳
+LC_ALL=C; export LC_ALL
+LANG=C; export LANG
 SPOOL=$ROOT/spool
 SEEK=$ROOT/seen
 ARCH=$ROOT/archive
