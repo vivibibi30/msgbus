@@ -391,11 +391,11 @@ cmd_members() {
     if [ -d "$MEM" ] && [ -n "$(ls -A "$MEM" 2>/dev/null)" ]; then
         for f in "$MEM"/*; do
             [ -f "$f" ] || continue
-            printf '%-18s %-6s %s' "$(basename "$f")" \
+            printf '%s\t%s\t%s' "$(basename "$f")" \
                 "$(sed -n 's/^status: //p' "$f" | head -1)" \
                 "$(sed -n 's/^updated: //p' "$f" | head -1 | cut -c1-19)"
             n=$(sed -n 's/^note: //p' "$f" | head -1)
-            [ -n "$n" ] && [ "$n" != "-" ] && printf '  %s' "$n"
+            [ -n "$n" ] && [ "$n" != "-" ] && printf '\t%s' "$n"
             echo
         done
     else
